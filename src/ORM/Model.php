@@ -51,7 +51,7 @@ abstract class Model extends InjectionAware
     protected static function getModelManager()
     {
         if(self::$modelManager === null) {
-            self::$modelManager = Container::getDefault()->get('model_manager');
+            self::$modelManager = Container::getDefault()->get('orm_model_manager');
         }
 
         return self::$modelManager;

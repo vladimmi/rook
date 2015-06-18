@@ -1,0 +1,22 @@
+postgres:
+  connection_string: 'host=/var/run/postgresql port=5432 user=vladimmi password=v1adimm1'
+
+services:
+  annotations:
+    class: Doctrine\Common\Annotations\AnnotationReader
+
+  orm_metadata:
+    class: Rook\ORM\Metadata\Container
+
+  orm_hydrator:
+    class: Rook\ORM\Hydrator
+    calls:
+      setAnnotations: ['@annotations']
+      setMetadataContainer: ['@orm_metadata']
+
+  orm_model_manager:
+    class: Rook\ORM\ModelManager
+    construct: ['%postgres.connection_string']
+    calls:
+      setHydrator: ['@orm_hydrator']
+      setMetadataContainer: ['@orm_metadata']

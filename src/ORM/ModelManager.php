@@ -10,6 +10,7 @@ use Rook\ORM\Annotations\Table;
 use Rook\ORM\Exception\FieldAnnotationException;
 use Rook\ORM\Exception\ModelMetadataException;
 use Rook\ORM\Exception\TableAnnotationException;
+use Rook\ORM\Metadata\Container;
 use Rook\ORM\Metadata\Field as FieldMetadata;
 use Rook\ORM\Types\TypeInterface;
 
@@ -30,33 +31,18 @@ class ModelManager extends InjectionAware
     private $connection = null;
 
     /**
-     * Annotations service
+     * Models metadata
      *
-     * @var AnnotationReader
-     * @Inject("annotations")
+     * @var Container
      */
-    private $annotations = null;
+    protected $metadata = null;
 
     /**
-     * Table names for every loaded model class
+     * Objects hydrator
      *
-     * @var string[]
+     * @var Hydrator
      */
-    private $tableNames = [];
-
-    /**
-     * Loaded metadata for models properties
-     *
-     * @var FieldMetadata[][]
-     */
-    private $metadata = [];
-
-    /**
-     * Field type converters
-     *
-     * @var TypeInterface[]
-     */
-    private $fieldTypes = [];
+    protected $hydrator = null;
 
     /**
      * @var string[]
@@ -93,86 +79,23 @@ class ModelManager extends InjectionAware
     }
 
     /**
-     * Load model metadata
+     * Set models metadata container
      *
-     * @param string $modelClass
-     * @return bool True if specified class is model
-     * @throws TableAnnotationException if table annotation is incomplete
-     * @throws FieldAnnotationException if field annotation is incomplete
+     * @param Container $container
      */
-    public function loadMetadata($modelClass)
+    public function setMetadataContainer($container)
     {
-        if(isset($this->tableNames[$modelClass])) return true;
-
-        $classReflection = new \ReflectionClass($modelClass);
-        $classAnnotations = $this->annotations->getClassAnnotations($classReflection);
-        $isModel = false;
-        foreach($classAnnotations as $classAnnotation) {
-            if($classAnnotation instanceof Table) {
-                if(empty($classAnnotation->name)) {
-                    throw new TableAnnotationException($classReflection->getName());
-                }
-                $this->tableNames['@' . $modelClass] = $classAnnotation->name;
-                if(!empty($classAnnotation->alias)) {
-                    $alias = trim($classAnnotation->alias);
-                    $this->tableNames['@' . $alias] = $classAnnotation->name;
-                }
-                $this->metadata[$modelClass] = [];
-                $isModel = true;
-            }
-        }
-
-        if($isModel) {
-            foreach ($classReflection->getProperties() as $propertyReflection) {
-                $propertyAnnotations = $this->annotations->getPropertyAnnotations($propertyReflection);
-                foreach($propertyAnnotations as $propertyAnnotation) {
-                    if($propertyAnnotation instanceof Field) {
-                        if(empty($propertyAnnotation->type)) {
-                            throw new FieldAnnotationException($classReflection->getName() . '::' . $propertyReflection->getName());
-                        }
-                        $propertyReflection->setAccessible(true);
-                        $this->metadata[$modelClass][$propertyReflection->getName()] = new FieldMetadata($propertyAnnotation, $propertyReflection);
-                    }
-                }
-            }
-        }
-
-        return $isModel;
+        $this->metadata = $container;
     }
 
     /**
-     * Hydrate data array to model object
+     * Set object hydrator service
      *
-     * @param array $data
-     * @param string $modelClass
-     * @return Model
-     * @throws FieldAnnotationException if model field annotation is incomplete
-     * @throws ModelMetadataException if model metadata not specified
-     * @throws TableAnnotationException if model table annotation is incomplete
+     * @param Hydrator $hydrator
      */
-    public function hydrate($data, $modelClass)
+    public function setHydrator($hydrator)
     {
-        if(!$this->loadMetadata($modelClass)) {
-            throw new ModelMetadataException($modelClass);
-        }
-
-        $metadata = $this->metadata[$modelClass];
-        /** @var Model $obj */
-        $obj = new $modelClass();
-
-        foreach($data as $key => $value) {
-            if(isset($metadata[$key])) {
-                $typeClass = $metadata[$key]->getAnnotation()->type;
-                if(!isset($this->fieldTypes[$typeClass])) {
-                    $this->fieldTypes[$typeClass] = new $typeClass();
-                }
-                $metadata[$key]->getReflection()->setValue($obj, $this->fieldTypes[$typeClass]->decode($value));
-            } else {
-                $obj->addJoinedData($key, $value);
-            }
-        }
-
-        return $obj;
+        $this->hydrator = $hydrator;
     }
 
     /**
@@ -187,7 +110,7 @@ class ModelManager extends InjectionAware
     {
         if(!isset($this->preparedQueries[$query])) {
             $queryName = md5($query);
-            $queryProcessed = strtr($query, $this->tableNames);
+            $queryProcessed = strtr($query, $this->metadata->getTableNames());
             $result = pg_prepare($this->getConnection(), $queryName, $queryProcessed);
             if($result === false) {
                 throw new \Exception('Error while trying to prepare SQL query: ' . $query);
@@ -211,7 +134,7 @@ class ModelManager extends InjectionAware
      */
     public function fetch($modelClass, $query, $params = [])
     {
-        if(!$this->loadMetadata($modelClass)) {
+        if(!$this->metadata->loadMetadata($modelClass)) {
             throw new ModelMetadataException($modelClass);
         }
 
@@ -220,20 +143,10 @@ class ModelManager extends InjectionAware
 
         if(pg_num_rows($response)) {
             while(($r = pg_fetch_assoc($response)) !== false) {
-                $result[] = $this->hydrate($r, $modelClass);
+                $result[] = $this->hydrator->hydrate($r, $modelClass);
             }
         }
 
         return $result;
-    }
-
-    public function getTableNames()
-    {
-        return $this->tableNames;
-    }
-
-    public function getMetadata()
-    {
-        return $this->metadata;
     }
 }

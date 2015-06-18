@@ -14,7 +14,7 @@ class Yaml extends Base
     public function load()
     {
         if(file_exists($this->configPath)) {
-            return yaml_parse($this->configPath);
+            return yaml_parse_file($this->configPath);
         }
         return null;
     }

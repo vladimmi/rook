@@ -13,6 +13,34 @@ class Container
 {
     protected $services = [];
 
+    protected $serviceNameConfig = 'config';
+
+    protected function preprocessArgument($arg)
+    {
+        if(is_string($arg)) {
+            switch($arg{0}) {
+                case '@':
+                    //get service
+                    return $this->get(substr($arg, 1));
+                case '%':
+                    //get parameter
+                    return $this->get($this->serviceNameConfig)->get(substr($arg, 1));
+                    break;
+            }
+        }
+
+        return $arg;
+    }
+
+    protected function preprocessArguments($args)
+    {
+        $result = [];
+        foreach($args as $arg) {
+            $result[] = $this->preprocessArgument($arg);
+        }
+        return $result;
+    }
+
     /**
      * Instantiate object from closure
      *
@@ -28,11 +56,46 @@ class Container
      * Instantiate object from config array
      *
      * @param mixed $config Service configuration
+     * Possible config keys:
+     * class - FQCN for service object
+     * construct - array of constructor parameters
+     * calls - needed method calls where key is method name and value is parameters array
+     * multicalls - needed multiple method calls where key is method name and value has array or parameters arrays
      * @return mixed
      */
     protected function createFromConfig($config)
     {
-        return null;
+        if(!isset($config['class'])) {
+            throw new ServiceInstantiateException(null, $config, null);
+        }
+
+        $classReflection = new \ReflectionClass($config['class']);
+
+        //instantiate class object
+        $service = null;
+        if(isset($config['construct']) && is_array($config['construct'])) {
+            $service = $classReflection->newInstanceArgs($this->preprocessArguments($config['construct']));
+        } else {
+            $service = $classReflection->newInstanceArgs([]);
+        }
+
+        //make single calls
+        if(isset($config['calls']) && is_array($config['calls'])) {
+            foreach($config['calls'] as $methodName => $args) {
+                call_user_func_array([$service, $methodName], $this->preprocessArguments($args));
+            }
+        }
+
+        //make multiple calls
+        if(isset($config['multicalls']) && is_array($config['multicalls'])) {
+            foreach($config['calls'] as $methodName => $arguments) {
+                foreach($arguments as $args) {
+                    call_user_func_array([$service, $methodName], $this->preprocessArguments($args));
+                }
+            }
+        }
+
+        return $service;
     }
 
     public function __construct($defaultDI = true)
@@ -66,6 +129,8 @@ class Container
      */
     public function setFromConfig($serviceName = 'config', $rootPath = 'services')
     {
+        $this->serviceNameConfig = $serviceName;
+
         /** @var Config $config */
         $config = $this->get($serviceName);
         $definitions = $config->get($rootPath);

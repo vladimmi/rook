@@ -3,7 +3,14 @@
 use Doctrine\Common\Annotations\AnnotationReader;
 use Doctrine\Common\Annotations\AnnotationRegistry;
 
-$autoloader = require_once('../vendor/autoload.php');
+define('PATH_ROOT', __DIR__ . '/../');
+define('PATH_CONFIG', PATH_ROOT . 'config/');
+define('PATH_PUBLIC', __DIR__ . '/');
+define('PATH_VENDOR', PATH_ROOT . 'vendor/');
+
+//autoloaders
+$autoloader = require_once(PATH_VENDOR . 'autoload.php');
+AnnotationRegistry::registerLoader(array($autoloader, 'loadClass'));
 
 //create DI container
 $di = new \Rook\DI\Container();
@@ -11,17 +18,17 @@ $di = new \Rook\DI\Container();
 //save autoloader to container
 $di->set('autoloader', $autoloader);
 
-//register annotation reader as service
-$di->set('annotations', function() use ($autoloader) {
-    AnnotationRegistry::registerLoader(array($autoloader, 'loadClass'));
-    return new AnnotationReader();
-});
+//load config
+$config = new \Rook\Config\Config();
+$config->merge(new Rook\Config\Loader\Yaml(PATH_CONFIG . 'base.yml'));
 
-//our model manager
-$modelManager = new \Rook\ORM\ModelManager('host=/var/run/postgresql port=5432 user=vladimmi password=v1adimm1');
+//save config to container
+$di->set('config', $config);
 
-//save it as service
-$di->set('model_manager', $modelManager);
+//load service definitions from config
+$di->setFromConfig();
+
+$modelManager = $di->get('orm_model_manager');
 
 //direct query, just get raw data array without any helpers
 $result1 = [];

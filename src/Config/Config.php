@@ -3,6 +3,7 @@
 namespace Rook\Config;
 
 use Rook\Config\Exception\KeyNotFoundException;
+use Rook\Config\Loader\Base;
 
 class Config
 {
@@ -16,10 +17,10 @@ class Config
     /**
      * Merge current config data with new data loaded via specified loader
      *
-     * @param Loader $loader New data source
+     * @param Base $loader New data source
      * @return void
      */
-    public function merge(Loader $loader)
+    public function merge(Base $loader)
     {
         $newData = $loader->load();
         if (is_array($newData)) {
