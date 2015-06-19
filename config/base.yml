@@ -14,9 +14,14 @@ services:
       setAnnotations: ['@annotations']
       setMetadataContainer: ['@orm_metadata']
 
-  orm_model_manager:
-    class: Rook\ORM\ModelManager
-    construct: ['%postgres.connection_string']
+  orm_connection:
+    class: Rook\ORM\Connection\Postgres
+    construct: ['%postgres']
+
+  repository_character:
+    class: Rook\Repository\Character
     calls:
-      setHydrator: ['@orm_hydrator']
+      setConnection: ['@orm_connection']
       setMetadataContainer: ['@orm_metadata']
+      setHydrator: ['@orm_hydrator']
+      setAnnotations: ['@annotations']
